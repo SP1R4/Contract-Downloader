@@ -1,6 +1,9 @@
-requests
-requests_cache
 web3
-colorama
+requests
+requests-cache
+tenacity
 tqdm
 python-dotenv
+colorama
+json-log-formatter
+pytest
