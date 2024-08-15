@@ -39,6 +39,7 @@ This Python script fetches and saves verified Ethereum smart contract source cod
 
    ```
    ETHERSCAN_API_KEY=your_etherscan_api_key
+   INFURA_API_KEY=your_infura_api_key
    ```
 
    Replace `your_etherscan_api_key` with your actual Etherscan API key.
