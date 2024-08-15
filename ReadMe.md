@@ -1,4 +1,3 @@
-Here'
 # Contract Downloader Script
 
 ## Overview
