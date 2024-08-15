@@ -1,0 +1,6 @@
+requests
+requests_cache
+web3
+colorama
+tqdm
+python-dotenv
