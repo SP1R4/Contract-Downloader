@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import requests
 import argparse
@@ -19,6 +20,7 @@ load_dotenv()
 
 # Get Etherscan API key from environment variables
 ETHERSCAN_API_KEY = os.getenv('ETHERSCAN_API_KEY')
+INFURA_API_KEY = os.getenv('INFURA_API_KEY')
 
 # Setup logging
 logging.basicConfig(
@@ -34,7 +36,6 @@ logger = logging.getLogger()
 # Validate API key
 if not ETHERSCAN_API_KEY:
     raise ValueError(f"{Fore.RED}Etherscan API key not found in environment variables. Please set ETHERSCAN_API_KEY.")
-
 
 def setup_argparse():
     """
@@ -65,7 +66,6 @@ def setup_argparse():
     )
 
     return parser.parse_args()
-
 
 def fetch_contract_source_code(contract_address):
     """
@@ -101,7 +101,6 @@ def fetch_contract_source_code(contract_address):
         logger.error(f"{Fore.RED}Network error: {e}")
         return None
 
-
 def fetch_contract_bytecode(web3, contract_address):
     """
     Fetches the bytecode of a contract using Web3 if the source code is not verified on Etherscan.
@@ -118,7 +117,6 @@ def fetch_contract_bytecode(web3, contract_address):
         logger.error(f"{Fore.RED}Failed to fetch bytecode: {e}")
         return None
 
-
 def save_contract_code(contract_data, output_dir):
     """
     Saves the contract source code to the specified directory.
@@ -131,35 +129,59 @@ def save_contract_code(contract_data, output_dir):
         contract_name = contract_data[0]['ContractName']
         source_code = contract_data[0]['SourceCode']
 
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
         # For multi-file contracts (typically Solidity contracts with libraries)
         if source_code.startswith('{{'):
-            source_code = source_code[1:-1]  # Clean up string formatting from Etherscan
-            source_code_dict = eval(source_code)  # Converts stringified dict to actual dict
+            # Clean up the JSON-like string and parse it
+            source_code = source_code[1:-1]
+            source_code_dict = json.loads(source_code)
 
-            os.makedirs(output_dir, exist_ok=True)
+            # Check if "sources" key exists and contains the actual files
+            if 'sources' in source_code_dict:
+                source_files = source_code_dict['sources']
+                
+                # Save each source file with a progress bar
+                with tqdm(total=len(source_files), desc="Saving contract files") as pbar:
+                    for filename, file_data in source_files.items():
+                        filepath = os.path.join(output_dir, filename)
 
-            # Save each file with a progress bar
-            with tqdm(total=len(source_code_dict), desc="Saving contract files") as pbar:
-                for filename, code in source_code_dict.items():
-                    filepath = os.path.join(output_dir, filename)
-                    with open(filepath, 'w') as file:
-                        file.write(code)
-                    logger.info(f"{Fore.GREEN}Saved {filename} to {filepath}")
-                    pbar.update(1)
+                        # Ensure directory for file exists
+                        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+                        # Extract the actual content from the dictionary
+                        if 'content' in file_data:
+                            code = file_data['content']
+                        else:
+                            logger.warning(f"{Fore.YELLOW}File {filename} has no 'content' key, skipping.")
+                            pbar.update(1)
+                            continue
+
+                        # Save the code to the corresponding file
+                        with open(filepath, 'w') as file:
+                            file.write(code)
+                        
+                        logger.info(f"{Fore.GREEN}Saved {filename} to {filepath}")
+                        pbar.update(1)
+
+            # Handle unexpected cases where the format is still single-file
+            else:
+                logger.warning(f"{Fore.YELLOW}No 'sources' key found, skipping multi-file handling.")
 
         # For single-file contracts
         else:
             filename = f"{contract_name}.sol"
             filepath = os.path.join(output_dir, filename)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)  # Ensure directory exists
             with open(filepath, 'w') as file:
                 file.write(source_code)
             logger.info(f"{Fore.GREEN}Saved {filename} to {filepath}")
 
-    except IOError as e:
-        logger.error(f"{Fore.RED}File I/O error: {e}")
+    except (IOError, json.JSONDecodeError) as e:
+        logger.error(f"{Fore.RED}Error saving contract files: {e}")
     except Exception as e:
         logger.error(f"{Fore.RED}An unexpected error occurred: {e}")
-
 
 def main():
     """
@@ -180,9 +202,9 @@ def main():
 
     logger.info(f"{Fore.BLUE}Fetching source code for contract at address: {contract_address}")
 
-    web3 = Web3(Web3.HTTPProvider('https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID'))
+    web3 = Web3(Web3.HTTPProvider(f'https://mainnet.infura.io/v3/{INFURA_API_KEY}'))
 
-    if not web3.isConnected():
+    if not web3.is_connected():
         logger.error(f"{Fore.RED}Failed to connect to the Ethereum network.")
         return
 
@@ -202,7 +224,6 @@ def main():
             logger.info(f"{Fore.GREEN}Saved contract bytecode to {bytecode_filename}")
         else:
             logger.error(f"{Fore.RED}Failed to retrieve the contract's bytecode.")
-
 
 if __name__ == "__main__":
     main()
